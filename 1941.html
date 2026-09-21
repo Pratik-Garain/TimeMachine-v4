@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>1941 — TIME MACHINE</title>
+  <link rel="stylesheet" href="./shared/year.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <script type="module">
+    import { runYear } from "./shared/year-engine.js";
+    import { YEAR_DATA } from "./years/1941/data.js";
+    runYear(YEAR_DATA, { homeUrl: "./index.html" });
+  </script>
+</body>
+</html>

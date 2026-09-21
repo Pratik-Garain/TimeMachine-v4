@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Panorama Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#07080c;
+    --ink-2:#0d0f16;
+    --panel:#12141c;
+    --line:rgba(255,255,255,0.09);
+    --text:#e9eaf0;
+    --dim:#8b8fa3;
+    --accent:#7c5cff;
+    --accent-dim:#4b3aa8;
+    --warn:#ff8a5c;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--ink); color:var(--text);
+    font-family:'Space Grotesk', system-ui, sans-serif;
+    overflow:hidden; overscroll-behavior:none;
+  }
+  #stage{position:fixed; inset:0;}
+  canvas{display:block; width:100%; height:100%; touch-action:none;}
+
+  /* ---- lens-ring loading / empty state ---- */
+  #empty{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:22px; text-align:center; padding:24px;
+    background:radial-gradient(circle at 50% 42%, #14172280 0%, var(--ink) 70%);
+    z-index:5;
+  }
+  .ring{
+    width:104px; height:104px; border-radius:50%;
+    border:1px solid var(--line);
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+  }
+  .ring::before{
+    content:''; position:absolute; inset:-1px; border-radius:50%;
+    border:1px solid transparent; border-top-color:var(--accent);
+    animation:spin 2.6s linear infinite;
+  }
+  .ring::after{
+    content:''; width:38px; height:38px; border-radius:50%;
+    background:var(--accent); opacity:0.18; filter:blur(6px);
+  }
+  @keyframes spin{ to{ transform:rotate(360deg);} }
+  #empty h1{font-size:17px; font-weight:600; margin:0; letter-spacing:0.01em;}
+  #empty p{font-size:13.5px; color:var(--dim); margin:0; max-width:320px; line-height:1.55;}
+  #pickBtn{
+    appearance:none; border:1px solid var(--line); background:var(--panel);
+    color:var(--text); padding:11px 22px; border-radius:100px; font-size:13.5px;
+    font-family:inherit; cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  #pickBtn:hover{border-color:var(--accent-dim); background:#171a24;}
+  #fileInput{display:none;}
+  #hint{font-size:11.5px; color:#5b5f70; font-family:'IBM Plex Mono', monospace;}
+
+  /* ---- top-left source label ---- */
+  #srcTag{
+    position:fixed; top:16px; left:16px; z-index:4;
+    font-family:'IBM Plex Mono', monospace; font-size:10.5px; color:var(--dim);
+    background:rgba(10,11,16,0.55); backdrop-filter:blur(6px);
+    border:1px solid var(--line); padding:5px 10px; border-radius:8px;
+    display:none; align-items:center; gap:7px;
+  }
+  #srcTag.show{display:flex;}
+  #srcDot{width:6px; height:6px; border-radius:50%; background:var(--accent);}
+
+  /* ---- bottom control dock ---- */
+  #dock{
+    position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:4px; z-index:6;
+    background:rgba(13,15,22,0.72); backdrop-filter:blur(14px);
+    border:1px solid var(--line); border-radius:100px; padding:6px;
+    opacity:0; pointer-events:none; transition:opacity .25s ease;
+  }
+  #dock.show{opacity:1; pointer-events:auto;}
+  .dbtn{
+    appearance:none; border:none; background:transparent; color:var(--dim);
+    width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; transition:background .15s, color .15s;
+  }
+  .dbtn:hover{background:rgba(255,255,255,0.06); color:var(--text);}
+  .dbtn svg{width:19px; height:19px;}
+  .dbtn.primary{
+    background:var(--accent); color:#fff; width:auto; padding:0 18px; gap:8px;
+    font-size:13px; font-weight:500; font-family:'Space Grotesk', sans-serif;
+  }
+  .dbtn.primary:hover{background:#6a4bef;}
+  .dbtn.active{color:var(--accent); background:rgba(124,92,255,0.14);}
+  #divider{width:1px; height:22px; background:var(--line); margin:0 2px;}
+
+  /* ---- format select popover ---- */
+  #fmtMenu{
+    position:fixed; left:50%; bottom:76px; transform:translateX(-50%) translateY(6px);
+    background:rgba(13,15,22,0.92); backdrop-filter:blur(14px);
+    border:1px solid var(--line); border-radius:14px; padding:6px; z-index:7;
+    display:none; flex-direction:column; min-width:180px;
+    box-shadow:0 12px 30px rgba(0,0,0,0.4);
+  }
+  #fmtMenu.show{display:flex;}
+  #fmtMenu button{
+    appearance:none; border:none; background:transparent; color:var(--dim);
+    text-align:left; padding:9px 12px; border-radius:9px; font-family:inherit;
+    font-size:12.5px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;
+  }
+  #fmtMenu button:hover{background:rgba(255,255,255,0.06); color:var(--text);}
+  #fmtMenu button.on{color:var(--accent);}
+  #fmtMenu .lbl{color:#5b5f70; font-size:10px; text-transform:none; padding:6px 12px 2px; font-family:'IBM Plex Mono',monospace;}
+
+  /* ---- gyro permission prompt (iOS) ---- */
+  #gyroPrompt{
+    position:fixed; inset:0; z-index:9; display:none;
+    align-items:center; justify-content:center; background:rgba(5,6,9,0.72); backdrop-filter:blur(4px);
+  }
+  #gyroPrompt.show{display:flex;}
+  #gyroCard{
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:24px; max-width:280px; text-align:center;
+  }
+  #gyroCard p{font-size:13px; color:var(--dim); line-height:1.55; margin:8px 0 16px;}
+  #gyroCard button{
+    appearance:none; border:none; background:var(--accent); color:#fff; width:100%;
+    padding:11px; border-radius:100px; font-size:13.5px; font-family:inherit; cursor:pointer;
+  }
+
+  /* ---- vr exit button (shown only in stereo mode) ---- */
+  #vrExit{
+    position:fixed; top:14px; right:14px; z-index:8; display:none;
+    width:38px; height:38px; border-radius:50%; border:1px solid var(--line);
+    background:rgba(13,15,22,0.7); color:var(--text); align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  #vrExit.show{display:flex;}
+  #vrExit svg{width:16px; height:16px;}
+
+  #centerLine{
+    position:fixed; top:0; left:50%; width:1px; height:100%; background:rgba(255,255,255,0.05);
+    z-index:3; display:none; pointer-events:none;
+  }
+  #centerLine.show{display:block;}
+
+  @media (max-width:520px){
+    #empty h1{font-size:16px;} #empty p{font-size:13px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="stage"></div>
+<div id="centerLine"></div>
+
+<div id="empty">
+  <div class="ring"></div>
+  <div>
+    <h1>Drop in your panorama</h1>
+    <p>Load the 8s equirectangular clip from Flow — drag to look around on desktop, or tilt your phone once it's loaded. Use Enter&nbsp;VR for goggles.</p>
+  </div>
+  <button id="pickBtn">Choose video file</button>
+  <input type="file" id="fileInput" accept="video/*">
+  <div id="hint">MP4 · equirectangular 2:1 · mono or stereo</div>
+</div>
+
+<div id="srcTag"><span id="srcDot"></span><span id="srcName">video</span></div>
+
+<div id="vrExit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></div>
+
+<div id="dock">
+  <button class="dbtn" id="btnReload" title="Load new file">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M19 9a8 8 0 00-14.7-3M5 15a8 8 0 0014.7 3"/></svg>
+  </button>
+  <button class="dbtn" id="btnPlay" title="Play/pause">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path id="playIcon" d="M8 5v14l11-7z"/></svg>
+  </button>
+  <div id="divider"></div>
+  <button class="dbtn" id="btnFormat" title="Stereo format">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="6" width="8" height="12" rx="1.5"/><rect x="13" y="6" width="8" height="12" rx="1.5"/></svg>
+  </button>
+  <button class="dbtn" id="btnRecenter" title="Recenter view">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+  </button>
+  <div id="divider"></div>
+  <button class="dbtn primary" id="btnVR" title="Enter VR">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2h-3.3a2 2 0 01-1.6-.8L12 15l-1.1 2.2a2 2 0 01-1.6.8H6a2 2 0 01-2-2V8z"/><circle cx="8.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>
+    <span>Enter VR</span>
+  </button>
+</div>
+
+<div id="fmtMenu">
+  <div class="lbl">SOURCE LAYOUT</div>
+  <button data-fmt="mono" class="on">Mono <span>●</span></button>
+  <button data-fmt="tb">Stereo — top / bottom</button>
+  <button data-fmt="lr">Stereo — side by side</button>
+</div>
+
+<div id="gyroPrompt">
+  <div id="gyroCard">
+    <h1 style="font-size:15px; margin:0;">Enable motion</h1>
+    <p>iOS needs permission to use the gyroscope so the view follows your head.</p>
+    <button id="gyroAllow">Allow motion access</button>
+  </div>
+</div>
+
+<video id="srcVideo" loop muted playsinline webkit-playsinline crossorigin="anonymous" style="display:none;"></video>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  var stage = document.getElementById('stage');
+  var video = document.getElementById('srcVideo');
+  var emptyEl = document.getElementById('empty');
+  var dock = document.getElementById('dock');
+  var srcTag = document.getElementById('srcTag');
+  var srcName = document.getElementById('srcName');
+  var centerLine = document.getElementById('centerLine');
+  var vrExit = document.getElementById('vrExit');
+
+  var renderer, scene, camera, sphereMono, texture;
+  var sphereL, sphereR, camL, camR;
+  var stereoMode = false;      // rendering split-screen for goggles
+  var stereoFormat = 'mono';   // mono | tb | lr  -- layout of the SOURCE video
+  var W = window.innerWidth, H = window.innerHeight;
+
+  var lon = 0, lat = 0;        // degrees, mouse/touch-driven yaw & pitch
+  var isPointerDown = false, ptrStartX = 0, ptrStartY = 0, lonStart = 0, latStart = 0;
+  var useGyro = false;
+  var deviceQuat = new THREE.Quaternion();
+  var screenOrientAngle = 0;
+
+  // ---------- three.js setup ----------
+  function initThree(){
+    renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(W, H);
+    stage.appendChild(renderer.domElement);
+
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(80, W / H, 0.1, 1000);
+
+    camL = new THREE.PerspectiveCamera(80, (W/2) / H, 0.1, 1000);
+    camR = new THREE.PerspectiveCamera(80, (W/2) / H, 0.1, 1000);
+
+    window.addEventListener('resize', onResize);
+    if (screen.orientation) {
+      screen.orientation.addEventListener('change', function(){
+        screenOrientAngle = screen.orientation.angle || 0;
+      });
+    }
+  }
+
+  function onResize(){
+    W = window.innerWidth; H = window.innerHeight;
+    renderer.setSize(W, H);
+    camera.aspect = W / H; camera.updateProjectionMatrix();
+    camL.aspect = (W/2) / H; camL.updateProjectionMatrix();
+    camR.aspect = (W/2) / H; camR.updateProjectionMatrix();
+  }
+
+  // ---------- geometry / UV helpers for stereo source layouts ----------
+  function makeSphere(uvRect){
+    // uvRect: {u0,v0,u1,v1} portion of the source texture this eye should sample
+    var geo = new THREE.SphereGeometry(500, 60, 40);
+    geo.scale(-1, 1, 1); // view from inside
+    if (uvRect) {
+      var uv = geo.attributes.uv;
+      for (var i = 0; i < uv.count; i++){
+        var u = uv.getX(i), v = uv.getY(i);
+        uv.setXY(i,
+          uvRect.u0 + u * (uvRect.u1 - uvRect.u0),
+          uvRect.v0 + v * (uvRect.v1 - uvRect.v0)
+        );
+      }
+      uv.needsUpdate = true;
+    }
+    var mat = new THREE.MeshBasicMaterial({ map: texture });
+    return new THREE.Mesh(geo, mat);
+  }
+
+  function buildSpheres(){
+    [sphereMono, sphereL, sphereR].forEach(function(s){ if (s) scene.remove(s); });
+
+    var rectL, rectR;
+    if (stereoFormat === 'tb') {       // top half = left eye, bottom half = right eye
+      rectL = {u0:0, v0:0.5, u1:1, v1:1};
+      rectR = {u0:0, v0:0,   u1:1, v1:0.5};
+    } else if (stereoFormat === 'lr') { // left half = left eye, right half = right eye
+      rectL = {u0:0,   v0:0, u1:0.5, v1:1};
+      rectR = {u0:0.5, v0:0, u1:1,   v1:1};
+    } else {                            // mono: both eyes see full frame
+      rectL = null; rectR = null;
+    }
+
+    sphereMono = makeSphere(stereoFormat === 'mono' ? null : rectL);
+    sphereL = makeSphere(rectL);
+    sphereR = makeSphere(rectR);
+
+    scene.add(sphereMono);
+    // sphereL / sphereR are added/removed depending on mode in render loop setup
+  }
+
+  // ---------- pointer (mouse/touch) look controls ----------
+  function addPointerControls(el){
+    el.addEventListener('pointerdown', function(e){
+      isPointerDown = true; useGyro = useGyro; // gyro still takes priority if active
+      ptrStartX = e.clientX; ptrStartY = e.clientY;
+      lonStart = lon; latStart = lat;
+    });
+    window.addEventListener('pointermove', function(e){
+      if (!isPointerDown) return;
+      lon = lonStart - (e.clientX - ptrStartX) * 0.18;
+      lat = latStart + (e.clientY - ptrStartY) * 0.18;
+      lat = Math.max(-85, Math.min(85, lat));
+    });
+    window.addEventListener('pointerup', function(){ isPointerDown = false; });
+    window.addEventListener('pointerleave', function(){ isPointerDown = false; });
+  }
+
+  // ---------- device orientation (gyroscope) ----------
+  var zee = new THREE.Vector3(0, 0, 1);
+  var euler = new THREE.Euler();
+  var q0 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -90 deg around X
+
+  function setQuaternionFromDeviceOrientation(quat, alpha, beta, gamma, orient){
+    euler.set(beta, alpha, -gamma, 'YXZ');
+    quat.setFromEuler(euler);
+    quat.multiply(q0);
+    quat.multiply(new THREE.Quaternion().setFromAxisAngle(zee, -orient));
+  }
+
+  function onDeviceOrientation(e){
+    if (e.alpha === null) return;
+    useGyro = true;
+    var alpha = THREE.MathUtils.degToRad(e.alpha);
+    var beta  = THREE.MathUtils.degToRad(e.beta);
+    var gamma = THREE.MathUtils.degToRad(e.gamma);
+    var orient = THREE.MathUtils.degToRad(screenOrientAngle);
+    setQuaternionFromDeviceOrientation(deviceQuat, alpha, beta, gamma, orient);
+  }
+
+  function requestGyro(){
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      document.getElementById('gyroPrompt').classList.add('show');
+      document.getElementById('gyroAllow').onclick = function(){
+        DeviceOrientationEvent.requestPermission().then(function(state){
+          document.getElementById('gyroPrompt').classList.remove('show');
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', onDeviceOrientation);
+          }
+        }).catch(function(){
+          document.getElementById('gyroPrompt').classList.remove('show');
+        });
+      };
+    } else if ('DeviceOrientationEvent' in window) {
+      window.addEventListener('deviceorientation', onDeviceOrientation);
+    }
+  }
+
+  // ---------- render loop ----------
+  function applyLookRotation(cam, eyeOffset){
+    if (useGyro) {
+      cam.quaternion.copy(deviceQuat);
+      if (eyeOffset) {
+        // small local lateral offset per eye, expressed in the camera's local space
+        var offsetVec = new THREE.Vector3(eyeOffset, 0, 0).applyQuaternion(deviceQuat);
+        cam.position.copy(offsetVec.multiplyScalar(0.06));
+      } else {
+        cam.position.set(0,0,0);
+      }
+    } else {
+      var phi = THREE.MathUtils.degToRad(90 - lat);
+      var theta = THREE.MathUtils.degToRad(lon);
+      var target = new THREE.Vector3(
+        500 * Math.sin(phi) * Math.cos(theta),
+        500 * Math.cos(phi),
+        500 * Math.sin(phi) * Math.sin(theta)
+      );
+      if (eyeOffset) {
+        var right = new THREE.Vector3().crossVectors(target, new THREE.Vector3(0,1,0)).normalize();
+        cam.position.copy(right.multiplyScalar(eyeOffset * 6));
+      } else {
+        cam.position.set(0,0,0);
+      }
+      cam.lookAt(target.add(cam.position));
+    }
+  }
+
+  function animate(){
+    requestAnimationFrame(animate);
+    if (texture) texture.needsUpdate = true;
+
+    if (!stereoMode) {
+      applyLookRotation(camera, 0);
+      renderer.setViewport(0, 0, W, H);
+      renderer.setScissorTest(false);
+      renderer.render(scene, camera);
+    } else {
+      applyLookRotation(camL, -1);
+      applyLookRotation(camR, 1);
+
+      renderer.setScissorTest(true);
+
+      renderer.setViewport(0, 0, W/2, H);
+      renderer.setScissor(0, 0, W/2, H);
+      swapEye(sphereL, true);
+      renderer.render(scene, camL);
+
+      renderer.setViewport(W/2, 0, W/2, H);
+      renderer.setScissor(W/2, 0, W/2, H);
+      swapEye(sphereR, false);
+      renderer.render(scene, camR);
+
+      renderer.setScissorTest(false);
+    }
+  }
+
+  var currentEyeSphere = null;
+  function swapEye(sphere, isLeft){
+    if (currentEyeSphere) scene.remove(currentEyeSphere);
+    scene.remove(sphereMono);
+    scene.add(sphere);
+    currentEyeSphere = sphere;
+  }
+
+  function exitStereoCleanup(){
+    if (currentEyeSphere) scene.remove(currentEyeSphere);
+    currentEyeSphere = null;
+    if (!scene.children.includes(sphereMono)) scene.add(sphereMono);
+  }
+
+  // ---------- file loading ----------
+  var fileInput = document.getElementById('fileInput');
+  document.getElementById('pickBtn').addEventListener('click', function(){ fileInput.click(); });
+  document.getElementById('btnReload').addEventListener('click', function(){ fileInput.click(); });
+
+  fileInput.addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    var url = URL.createObjectURL(f);
+    video.src = url;
+    video.play().catch(function(){});
+    srcName.textContent = f.name.length > 22 ? f.name.slice(0,20) + '…' : f.name;
+    srcTag.classList.add('show');
+
+    video.addEventListener('loadeddata', function onLoaded(){
+      video.removeEventListener('loadeddata', onLoaded);
+      emptyEl.style.display = 'none';
+      dock.classList.add('show');
+      if (!texture) {
+        texture = new THREE.VideoTexture(video);
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.format = THREE.RGBFormat;
+        buildSpheres();
+      }
+    }, { once:true });
+  });
+
+  // ---------- UI wiring ----------
+  document.getElementById('btnPlay').addEventListener('click', function(){
+    var icon = document.getElementById('playIcon');
+    if (video.paused) { video.play(); icon.setAttribute('d','M6 5h4v14H6zM14 5h4v14h-4z'); }
+    else { video.pause(); icon.setAttribute('d','M8 5v14l11-7z'); }
+  });
+
+  document.getElementById('btnRecenter').addEventListener('click', function(){
+    lon = 0; lat = 0;
+  });
+
+  var fmtMenu = document.getElementById('fmtMenu');
+  document.getElementById('btnFormat').addEventListener('click', function(){
+    fmtMenu.classList.toggle('show');
+  });
+  document.addEventListener('click', function(e){
+    if (!fmtMenu.contains(e.target) && e.target.id !== 'btnFormat') fmtMenu.classList.remove('show');
+  });
+  Array.prototype.forEach.call(fmtMenu.querySelectorAll('button[data-fmt]'), function(btn){
+    btn.addEventListener('click', function(){
+      stereoFormat = btn.getAttribute('data-fmt');
+      Array.prototype.forEach.call(fmtMenu.querySelectorAll('button[data-fmt]'), function(b){ b.classList.remove('on'); });
+      btn.classList.add('on');
+      if (texture) buildSpheres();
+      fmtMenu.classList.remove('show');
+    });
+  });
+
+  document.getElementById('btnVR').addEventListener('click', function(){
+    enterStereo();
+  });
+  vrExit.addEventListener('click', function(){ exitStereo(); });
+
+  function enterStereo(){
+    if (!texture) return;
+    stereoMode = true;
+    centerLine.classList.add('show');
+    vrExit.classList.add('show');
+    dock.classList.remove('show');
+    requestGyro();
+    var el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen().catch(function(){});
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(function(){});
+    }
+  }
+  function exitStereo(){
+    stereoMode = false;
+    centerLine.classList.remove('show');
+    vrExit.classList.remove('show');
+    dock.classList.add('show');
+    exitStereoCleanup();
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function(){});
+    if (screen.orientation && screen.orientation.unlock) {
+      try { screen.orientation.unlock(); } catch(err){}
+    }
+  }
+
+  // request gyro on first touch too (Android needs no permission, iOS handled via requestGyro on VR entry)
+  window.addEventListener('deviceorientation', onDeviceOrientation, { once:false });
+
+  // ---------- boot ----------
+  initThree();
+  addPointerControls(renderer.domElement);
+  animate();
+
+})();
+</script>
+</body>
+</html>

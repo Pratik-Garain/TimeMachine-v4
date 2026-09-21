@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>TIME MACHINE — Temporal Exploration System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./src/styles/main.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <canvas id="webgl-canvas" aria-hidden="true"></canvas>
+
+    <div class="vignette"></div>
+    <div class="hud-scanline" aria-hidden="true"></div>
+
+    <div id="boot"></div>
+    <div id="title-card">
+      <h1>TIME MACHINE</h1>
+    </div>
+
+    <div id="hud">
+      <div class="hud-eyebrow">TIME MACHINE<span>TEMPORAL EXPLORATION SYSTEM</span></div>
+      <div class="readout" id="readout-tl">REACTOR <b id="readout-reactor">STABLE</b></div>
+      <div class="readout" id="readout-tr">TEMPORAL LOCK <b id="readout-lock">AWAITING INPUT</b><br />COORDS <b id="readout-coords">—</b></div>
+      <div class="readout" id="readout-bl">STATUS <b id="readout-status">HOLDING</b></div>
+      <div id="destination-panel" role="navigation" aria-label="Historical destinations"></div>
+    </div>
+
+    <button id="audio-toggle" type="button" title="Toggle spacecraft audio" aria-label="Toggle audio">🔈</button>
+    <label id="quality-wrap">Quality
+      <select id="quality-select" aria-label="Graphics quality">
+        <option value="high">HIGH</option>
+        <option value="medium">MEDIUM</option>
+        <option value="low">LOW</option>
+      </select>
+    </label>
+
+    <div id="sequence-text"></div>
+    <div id="flash-layer"></div>
+    <div id="blackout"></div>
+    <div id="aria-live" class="sr-only" aria-live="polite"></div>
+
+    <div id="webgl-fallback">
+      <h1>TIME MACHINE</h1>
+      <p class="fallback-reason"></p>
+      <p>Choose a temporal destination. The historical experiences will still launch from these controls.</p>
+    </div>
+  </div>
+
+  <!--
+    Visual reference (not embedded): cinematic camera cannot be driven through
+    a cross-origin Sketchfab iframe.
+    Wormhole: Galaxy Space Portal Black Hole — tamminen
+    Cockpit: Sci fi Cockpit 2 Light Fighter — VattalusAssets
+  -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
